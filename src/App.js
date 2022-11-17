@@ -1,6 +1,7 @@
 import './App.css';
 import React from 'react';
-import {DrawInfo} from './DrawInfo'
+import {DrawInfo} from './DrawInfo';
+import axios from 'axios';
 
 let {useState, useEffect} = React;
 let SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -10,6 +11,9 @@ let creating = false;
 let rotating = false;
 let changingColor = false;
 let createSquare = false;
+let createCircle = false;
+let loading = false;
+let saving = false;
 let xy = false;
 let wh = false;
 let moving = false;
@@ -118,6 +122,43 @@ function App() {
       if(typeof buildDrawing.width === 'number' && typeof buildDrawing.height === 'number') {
         wh = false;
         creating = false;
+        createSquare = false;
+        setPhrase('drawing...');
+        let curDrawings = [...drawings.objects];
+        curDrawings.push(buildDrawing);
+        setDrawings({objects: curDrawings});
+      } else {
+        setPhrase('sorry, please try again');
+      }
+    } else if(!creating  && !moving && (transcript.includes('create Circle') || transcript.includes('create a circle'))) {
+      console.log('creating circle');
+      creating = true;
+      createCircle = true;
+      xy = true;
+      buildDrawing = new DrawInfo();
+      buildDrawing.isCircle = true;
+      setPhrase('Say the x,y coordinates to draw at (ex: 100 by 100)');
+    } else if (creating && createCircle && xy) {
+      let coords = transcript.split(' ');
+      buildDrawing.x = Number(coords[0]) || convertToNumber(coords[0]);
+      buildDrawing.y = Number(coords[2]) || convertToNumber(coords[2]);
+      console.log('set coords: ',coords[0],coords[2]);
+      if(typeof buildDrawing.x === 'number' && typeof buildDrawing.y === 'number') {
+        xy = false;
+        wh = true;
+        setPhrase('Say the width and height radius in pixels to draw (ex: 100 by 100)');
+      } else {
+        setPhrase('sorry, please try again');
+      }
+    } else if (creating && createCircle && wh) {
+      let coords = transcript.split(' ');
+      buildDrawing.width = Number(coords[0]) || convertToNumber(coords[0]);
+      buildDrawing.height = Number(coords[2]) || convertToNumber(coords[2]);
+      console.log('set lengths: ',coords[0],coords[2]);
+      if(typeof buildDrawing.width === 'number' && typeof buildDrawing.height === 'number') {
+        wh = false;
+        creating = false;
+        createCircle = false;
         setPhrase('drawing...');
         let curDrawings = [...drawings.objects];
         curDrawings.push(buildDrawing);
@@ -211,10 +252,60 @@ function App() {
       } else {
         setPhrase('select an object first');
       }
-    } else {
+    } else if (!creating && !moving && !changingColor && !loading && !saving && transcript.includes('save')) {
+      saving = true;
+      setPhrase('say a name to save image as');
+    } else if(saving) {
+      saveImage(transcript);
+    } else if (!creating && !moving && !changingColor && !loading && transcript.includes('load')) {
+      //getNames();
+      setPhrase('what would you like to load');
+      loading = true;
+    } else if(loading) {
+      getImage(transcript);
+    }else {
       setPhrase('sorry, please try again');
     }
 
+  }
+
+  let getNames = () => {
+    axios({
+      method:'get',
+      url:'/names'
+    }).then((res)=>{
+      setPhrase(res.data);
+    })
+  }
+
+  let getImage = (name) => {
+    axios({
+      method:'get',
+      url:'/image',
+      params: {
+        name: name
+      }
+    }).then((res)=> {
+      let curDrawings = [...drawings.objects];
+      curDrawings.push(...res.data);
+      setDrawings({objects: curDrawings});
+      loading = false;
+    })
+  }
+
+  let saveImage = (name) => {
+    axios({
+      method:'post',
+      url:'/image',
+      data: {
+        name: name,
+        info: JSON.stringify(drawings.objects)
+      }
+    }).then(()=> {
+      saving = false;
+      setPhrase('saved as: ' + transcript);
+      console.log('saved');
+    })
   }
 
   let convertToNumber = (word) => {
@@ -222,6 +313,8 @@ function App() {
       word = 'two';
     } else if (word === 'tin' || word === 'in') {
       word = 'ten';
+    } else if(word ==='for'){
+      word ='four';
     }
     return Nums[word];
   }
@@ -237,7 +330,11 @@ function App() {
       context.rotate(drawing.rotation * Math.PI / 180)
       context.translate(-translateX, -translateY);
       context.beginPath();
-      context.rect(drawing.x, drawing.y, drawing.width, drawing.height);
+      if (drawing.isCircle) {
+        context.ellipse(drawing.x, drawing.y, drawing.width, drawing.height, 0, 0, Math.PI * 2, true);
+      } else {
+        context.rect(drawing.x, drawing.y, drawing.width, drawing.height);
+      }
 
       context.closePath();
       context.fill();
