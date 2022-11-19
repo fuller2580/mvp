@@ -7,5 +7,6 @@ export class DrawInfo {
     this.fill = '#00ff00';
     this.stroke = '#ffffff';
     this.rotation = 0;
+    this.isCircle = false;
   }
 }
